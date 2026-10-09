@@ -1,0 +1,162 @@
+# Ships the stdout/stderr of every container on this host to Elasticsearch
+# (normally the `elastic` project on the same shared network), into a single
+# data stream, `filebeat-docker`, with a delete-after-LOG_RETENTION lifecycle.
+#
+# Per-container behaviour is driven by labels on the *source* containers
+# (hints-based autodiscover), e.g.:
+#   co.elastic.logs/enabled: "false"             - don't ship this container
+#   co.elastic.logs/multiline.type: pattern      - glue stack traces together
+#   co.elastic.logs/multiline.pattern: '^\s'
+#   co.elastic.logs/multiline.negate: "false"
+#   co.elastic.logs/multiline.match: after
+#   co.elastic.logs/module: nginx                - parse with a Filebeat module
+#   co.elastic.logs/fileset: access                (exactly one fileset)
+# Don't use per-stream `co.elastic.logs/fileset.stdout`/`.stderr` (or leave a
+# multi-fileset module without `fileset`): as of 9.5 every fileset input gets
+# the same filestream ID, they all refuse to start, and the container ships
+# nothing at all.
+# See https://www.elastic.co/docs/reference/beats/filebeat/configuration-autodiscover-hints
+#
+# kibana/ holds a ready-made "Web traffic" dashboard over the proxy-ssl access
+# logs (import instructions in kibana/gen_dashboard.py).
+#
+# The config is inlined (`configs.content`) rather than bind-mounted: a bind
+# mount would resolve against the workstation, not the remote daemon, when
+# deploying through `docker --context <host>`.
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  # Filebeat's registry (read offsets per log file). Without it every
+  # recreate of the container re-ships all existing container logs.
+  filebeat-data:
+
+configs:
+  filebeat-config:
+    content: &filebeat-config |
+      filebeat.autodiscover:
+        providers:
+          - type: docker
+            hints.enabled: true
+            hints.default_config:
+              type: filestream
+              id: container-$${data.container.id}
+              prospector.scanner.symlinks: true
+              # the default fingerprint identity skips files under 1 KiB,
+              # i.e. quiet containers would never ship anything; container
+              # log paths are unique per container, so inode identity is safe
+              prospector.scanner.fingerprint.enabled: false
+              file_identity.native: ~
+              # keep reading a container's file after it has been removed,
+              # so the last lines of a short-lived container aren't lost
+              close.on_state_change.removed: false
+              parsers:
+                # decodes docker's json-file format, sets `stream`
+                # (stdout/stderr) and rejoins lines docker split at 16k
+                - container: ~
+              paths:
+                - /var/lib/docker/containers/$${data.container.id}/*.log
+
+      processors:
+        # strip ANSI colour/cursor escape sequences and stray newlines
+        - replace:
+            fields:
+              - field: message
+                pattern: '\x1b\[[0-9;?]*[A-Za-z]'
+                replacement: ""
+              # "nginx.1     | " - forego's per-process prefix (nginx-proxy);
+              # left in, it trips the nginx module's grok whenever the vhost
+              # is `_` or an IP. Narrow on purpose: `INFO | ...` stays intact.
+              - field: message
+                pattern: '^[a-z][a-z0-9_-]*\.[0-9]+ +\| '
+                replacement: ""
+              # the container parser keeps each line's trailing newline, so
+              # multiline-joined events come out double-spaced
+              - field: message
+                pattern: '\n\n'
+                replacement: "\n"
+              - field: message
+                pattern: '\n$$'
+                replacement: ""
+            ignore_missing: true
+            fail_on_error: false
+        - drop_fields:
+            fields: ["agent.ephemeral_id", "agent.id", "log.offset"]
+            ignore_missing: true
+
+      output.elasticsearch:
+        hosts: ["${ES_HOST:?ES_HOST is required}"]
+        api_key: "${ES_API_KEY:?ES_API_KEY is required}"
+        index: "filebeat-docker"
+
+      setup.template.name: "filebeat-docker"
+      setup.template.pattern: "filebeat-docker"
+      setup.template.overwrite: true
+      setup.template.settings:
+        index.number_of_shards: 1
+        index.number_of_replicas: 0
+
+      setup.ilm.enabled: true
+      setup.ilm.policy_name: "filebeat-docker"
+      setup.ilm.policy_file: /usr/share/filebeat/ilm-policy.json
+      # re-applied on every start, so a changed LOG_RETENTION takes effect
+      setup.ilm.overwrite: true
+
+      logging.level: warning
+      logging.metrics.enabled: false
+
+  filebeat-ilm-policy:
+    content: &filebeat-ilm-policy |
+      {
+        "policy": {
+          "phases": {
+            "hot": {
+              "actions": {
+                "rollover": {
+                  "max_age": "1d",
+                  "max_primary_shard_size": "10gb"
+                }
+              }
+            },
+            "delete": {
+              "min_age": "${LOG_RETENTION:-30d}",
+              "actions": { "delete": {} }
+            }
+          }
+        }
+      }
+
+services:
+  filebeat:
+    image: "docker.elastic.co/beats/filebeat:${FILEBEAT_TAG:?FILEBEAT_TAG is required}"
+    restart: "${RESTART:-unless-stopped}"
+    # container log files and the docker socket are root-only
+    user: root
+    # becomes `host.name` on every event
+    hostname: "${HOST_NAME:?HOST_NAME is required}"
+    command: ["filebeat", "-e"]
+    # Compose doesn't recreate a container when only a `configs.content`
+    # changes, but it does when a label does - so the same content is mirrored
+    # here to make `up -d` pick up config/env edits.
+    labels:
+      local.filebeat.config: *filebeat-config
+      local.filebeat.ilm-policy: *filebeat-ilm-policy
+    configs:
+      - source: filebeat-config
+        target: /usr/share/filebeat/filebeat.yml
+        mode: 0444
+      - source: filebeat-ilm-policy
+        target: /usr/share/filebeat/ilm-policy.json
+        mode: 0444
+    volumes:
+      - "filebeat-data:/usr/share/filebeat/data"
+      - "/var/lib/docker/containers:/var/lib/docker/containers:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"

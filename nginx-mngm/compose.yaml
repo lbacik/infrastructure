@@ -1,0 +1,23 @@
+version: '3.8'
+
+networks:
+  default:
+    name: main
+    external: true
+
+volumes:
+  nginx-mngm-data:
+  nginx-mngm-letsencrypt:
+
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+      - '81:81'
+      - '8443:443'
+    volumes:
+      - 'nginx-mngm-data:/data'
+      - 'nginx-mngm-letsencrypt:/etc/letsencrypt'
+

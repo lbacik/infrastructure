@@ -1,0 +1,19 @@
+services:
+  litellm:
+    # Persists spend logs, virtual keys, teams and users in the existing
+    # PostgreSQL service and enables the Admin UI (/ui) usage and logs views.
+    environment:
+      # Prisma migrations run on every start, so the role must own DB_NAME.
+      # Credentials are spliced into a URL: keep DB_PASSWORD URL-safe
+      # (e.g. openssl rand -hex 24).
+      DATABASE_URL: "postgresql://${DB_USER:?DB_USER is required}:${DB_PASSWORD:?DB_PASSWORD is required}@${DB_HOST:?DB_HOST is required}:${DB_PORT:-5432}/${DB_NAME:?DB_NAME is required}"
+      # Encrypts provider credentials stored in the database. Without it
+      # LiteLLM falls back to LITELLM_MASTER_KEY, which then can no longer be
+      # rotated without losing those credentials.
+      LITELLM_SALT_KEY: "${LITELLM_SALT_KEY:?LITELLM_SALT_KEY is required}"
+      # Admin UI login; LITELLM_MASTER_KEY also works as the password.
+      UI_USERNAME: "${UI_USERNAME:-admin}"
+      UI_PASSWORD: "${UI_PASSWORD:?UI_PASSWORD is required}"
+    healthcheck:
+      # The first start applies the full schema before the server listens.
+      start_period: 120s

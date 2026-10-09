@@ -1,0 +1,29 @@
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  uploads:
+
+services:
+  listmonk:
+    image: "listmonk/listmonk:${VERSION}"
+    container_name: "listmonk"
+    restart: "${RESTART}"
+    command: [sh, -c, "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && ./listmonk --config ''"]
+    ports:
+      - "127.0.0.1:9090:9000"
+    volumes:
+      - "uploads:/listmonk/uploads"
+    environment:
+      LISTMONK_app__address: "0.0.0.0:9000"
+      LISTMONK_db__host: "${DB_HOST}"
+      LISTMONK_db__user: "${DB_USER}"
+      LISTMONK_db__password: "${DB_PASSWORD}"
+      LISTMONK_db__database: "${DB_DATABASE}"
+      LISTMONK_db__ssl_mode: "${LM_SSL_MODE}"
+      VIRTUAL_HOST: "${VIRTUAL_HOST}"
+      VIRTUAL_PORT: "9000"
+      LETSENCRYPT_HOST: "${VIRTUAL_HOST}"
+

@@ -1,0 +1,20 @@
+volumes:
+  ovpn-data:
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  vpn:
+    build: "https://github.com/kylemanna/docker-openvpn.git"
+    image: "kylemanna/openvpn:local"
+    container_name: "vpn"
+    ports:
+      - "${HOST_IP}:1194:1194/${PROTOCOL}"
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - "ovpn-data:/etc/openvpn"
+

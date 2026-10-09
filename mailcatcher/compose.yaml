@@ -1,0 +1,17 @@
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  mailcatcher:
+    image: schickling/mailcatcher
+    ports:
+      - "${WEB_HOST_IP}:1080:1080"
+      - "${SMTP_HOST_IP}:1025:1025"
+    environment:
+      - SMTP_PORT=1025
+      - HTTP_PORT=1080
+
+

@@ -1,0 +1,30 @@
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  umami:
+    image: "ghcr.io/umami-software/umami:${UMAMI_VERSION}"
+    restart: "${RESTART:-unless-stopped}"
+    # node runs as PID 1 otherwise and ignores SIGTERM (upstream compose does
+    # the same)
+    init: true
+    environment:
+      # Schema migrations run on every start (scripts/start-docker.sh), so the
+      # role must own DB_NAME. Credentials are spliced into a URL: keep
+      # DB_PASSWORD URL-safe (e.g. openssl rand -hex 24).
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-5432}/${DB_NAME}"
+      APP_SECRET: "${APP_SECRET:?APP_SECRET is required}"
+      TWO_FACTOR_ENCRYPTION_KEY: "${TWO_FACTOR_ENCRYPTION_KEY:?TWO_FACTOR_ENCRYPTION_KEY is required}"
+      DISABLE_TELEMETRY: "1"
+      VIRTUAL_HOST: "${VIRTUAL_HOST}"
+      VIRTUAL_PORT: "3000"
+      LETSENCRYPT_HOST: "${VIRTUAL_HOST}"
+      LETSENCRYPT_EMAIL: "${LETSENCRYPT_EMAIL:-}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/heartbeat"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

@@ -1,0 +1,14 @@
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  redis:
+    image: redis:alpine
+    networks:
+      default:
+        aliases:
+          - "${FULL_HOSTNAME}"
+

@@ -1,0 +1,92 @@
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  elasticsearch-data:
+    driver: local
+
+services:
+  elasticsearch:
+    image: "elasticsearch:${ES_TAG}"
+    hostname: elasticsearch
+    restart: "${RESTART:-unless-stopped}"
+    environment:
+      bootstrap.memory_lock: true
+      # empty = let ES size the heap itself (about half of ES_MEM_LIMIT)
+      ES_JAVA_OPTS: "${ES_JAVA_OPTS:-}"
+      TZ: "${TIMEZONE}"
+      discovery.type: "single-node"
+      xpack.security.enabled: true
+      xpack.ml.enabled: true
+      ELASTIC_PASSWORD: "${ES_PASS:?ES_PASS is required}"
+    mem_limit: "${ES_MEM_LIMIT:-4g}"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
+    volumes:
+      - "elasticsearch-data:/usr/share/elasticsearch/data"
+    networks:
+      default:
+        aliases:
+          - "${FULL_ES_HOSTNAME}"
+    ports:
+      - "127.0.0.1:9200:9200/tcp"
+    healthcheck:
+      # unauthenticated request; a 401 means the node is up and security is on
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'missing authentication credentials'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  # One-shot. ES ignores any kibana_system password passed as an env var;
+  # it can only be set through the security API. Idempotent, so it's safe
+  # that `up -d` re-runs it.
+  setup:
+    image: "elasticsearch:${ES_TAG}"
+    restart: "no"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTIC_PASSWORD: "${ES_PASS:?ES_PASS is required}"
+      KIBANA_PASSWORD: "${KIBANA_PASSWORD:?KIBANA_PASSWORD is required}"
+    command:
+      - bash
+      - -c
+      - >-
+        curl -fsS --retry 12 --retry-delay 5 --retry-all-errors
+        -X POST -u "elastic:$${ELASTIC_PASSWORD}"
+        -H "Content-Type: application/json"
+        http://elasticsearch:9200/_security/user/kibana_system/_password
+        -d "{\"password\":\"$${KIBANA_PASSWORD}\"}"
+
+  kibana:
+    image: "kibana:${ES_TAG}"
+    hostname: kibana
+    restart: "${RESTART:-unless-stopped}"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    environment:
+      TZ: "${TIMEZONE}"
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      ELASTICSEARCH_USERNAME: "kibana_system"
+      ELASTICSEARCH_PASSWORD: "${KIBANA_PASSWORD:?KIBANA_PASSWORD is required}"
+      # without fixed keys Kibana generates new ones on every start, which
+      # breaks sessions, alerting rules and connectors after a restart
+      XPACK_SECURITY_ENCRYPTIONKEY: "${KIBANA_ENCRYPTION_KEY:?KIBANA_ENCRYPTION_KEY is required}"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "${KIBANA_ENCRYPTION_KEY}"
+      XPACK_REPORTING_ENCRYPTIONKEY: "${KIBANA_ENCRYPTION_KEY}"
+      XPACK_APM_SERVICEMAPENABLED: true
+    mem_limit: "${KIBANA_MEM_LIMIT:-1g}"
+    ports:
+      - "127.0.0.1:5601:5601/tcp"

@@ -1,0 +1,22 @@
+# Layered on top of compose.yaml for hosts that publish Kibana to the
+# internet through the proxy-ssl project (NETWORK must be the network
+# proxy-ssl watches):
+#
+#   docker compose \
+#     --project-directory monorepo/elastic \
+#     -f monorepo/elastic/compose.yaml \
+#     -f monorepo/elastic/compose.public.yaml \
+#     --env-file configurations/<host>/elastic.env \
+#     -p elastic up -d
+#
+# Elasticsearch itself stays unpublished.
+
+services:
+  kibana:
+    environment:
+      VIRTUAL_HOST: "${KIBANA_DOMAIN:?KIBANA_DOMAIN is required}"
+      VIRTUAL_PORT: "5601"
+      LETSENCRYPT_HOST: "${KIBANA_DOMAIN}"
+      LETSENCRYPT_EMAIL: "${LETSENCRYPT_EMAIL:-}"
+      # used by Kibana for links in alerts/reports and redirects
+      SERVER_PUBLICBASEURL: "https://${KIBANA_DOMAIN}"

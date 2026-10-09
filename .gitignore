@@ -1,0 +1,12 @@
+.env
+*.env
+.DS_Store
+tags
+config.ovpn
+
+# ignored items
+dns/
+jobs/
+open-hands/
+nginx-proxy-path/
+

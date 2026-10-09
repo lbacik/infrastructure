@@ -1,0 +1,40 @@
+version: '3'
+
+networks:
+  default:
+    name: "${BASE_NETWORK}"
+
+services:
+  zbx-server:
+    image: zabbix/zabbix-server-mysql:alpine-latest
+    restart: always
+    environment:
+      DB_SERVER_HOST: "${MYSQL_HOST}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_USER: "${ZBX_DB_USER}"
+      MYSQL_PASSWORD: "${ZBX_DB_PASSWORD}"
+      ZBX_DEBUGLEVEL: 2
+
+  zbx-front:
+    image: zabbix/zabbix-web-nginx-mysql:alpine-latest
+    restart: always
+    environment:
+      DB_SERVER_HOST: "${MYSQL_HOST}"
+      MYSQL_USER: "${ZBX_DB_USER}"
+      MYSQL_PASSWORD: "${ZBX_DB_PASSWORD}"
+      ZBX_SERVER_HOST: "zbx-server"
+      PHP_TZ: "Europe/Warsaw"
+      VIRTUAL_HOST: "zabbix.${DOMAIN}"
+      VIRTUAL_PORT: 8080
+      LETSENCRYPT_HOST: "zabbix.${DOMAIN}"
+
+  zbx-agent:
+    image: zabbix/zabbix-agent:latest
+    restart: always
+    environment:
+      ZBX_HOSTNAME: "127.0.0.1"
+      ZBX_SERVER_HOST: "zbx-server"
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+

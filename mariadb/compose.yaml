@@ -1,0 +1,31 @@
+version: '3'
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  db-data:
+
+services:
+  db:
+    image: mariadb:${VERSION}
+    # restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+    volumes:
+      - "db-data:/var/lib/mysql"
+    # ports:
+    #   - "${HOST_IP}:3306:3306/tcp"
+    networks:
+      default:
+        aliases:
+          - "${HOSTNAME_DB}"
+
+  phpmyadmin:
+    image: phpmyadmin
+    environment:
+      VIRTUAL_HOST: "${HOSTNAME_PMA}"
+      LETSENCRYPT_HOST: "${HOSTNAME_PMA}"
+      PMA_ARBITRARY: 1

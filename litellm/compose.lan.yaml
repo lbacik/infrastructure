@@ -1,0 +1,7 @@
+services:
+  litellm:
+    # Publishes the whole proxy (API and Admin UI at /ui) on a host LAN
+    # address: http://<LAN_IP>:<LAN_PORT>. Anyone on that network holding a
+    # valid key can send requests billed to the provider keys.
+    ports:
+      - "${LAN_IP:?LAN_IP is required}:${LAN_PORT:-4000}:4000"

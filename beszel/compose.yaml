@@ -1,0 +1,57 @@
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  beszel-data:
+  beszel-agent-data:
+  # shared unix socket the local agent listens on and the hub dials out to;
+  # avoids the agent (host network mode) needing to reach the hub by
+  # container name on the "main" network, which host networking can't see
+  beszel-socket:
+
+services:
+  beszel:
+    image: henrygd/beszel:latest
+    restart: "${RESTART:-unless-stopped}"
+    volumes:
+      - "beszel-data:/beszel_data"
+      - "beszel-socket:/beszel_socket"
+    environment:
+      # notification links + agent config generation read this back, so it
+      # has to be the externally-reachable URL, not the in-network one
+      APP_URL: "https://${VIRTUAL_HOST}"
+      VIRTUAL_HOST: "${VIRTUAL_HOST}"
+      VIRTUAL_PORT: "8090"
+      LETSENCRYPT_HOST: "${VIRTUAL_HOST}"
+      LETSENCRYPT_EMAIL: "${LETSENCRYPT_EMAIL:-}"
+    ports:
+      # loopback-only; the local beszel-agent below reaches the hub through
+      # this instead of the docker network, since network_mode: host can't
+      # see the "main" network. Always bound, regardless of LAN exposure
+      # (see compose.override.yaml).
+      - "127.0.0.1:${PORT:-8090}:8090"
+
+  # Monitors the host beszel itself runs on. Only makes sense to enable
+  # (set AGENT_TOKEN/AGENT_KEY) once the hub has generated its own SSH key
+  # and a system/universal token exists to authenticate with - see
+  # env.example.
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    restart: "${RESTART:-unless-stopped}"
+    # required for accurate host network interface stats; means this
+    # service can't also join the "main" network, hence the shared socket
+    # and loopback port above instead of a container-name hub URL
+    network_mode: host
+    depends_on:
+      - beszel
+    volumes:
+      - "beszel-agent-data:/var/lib/beszel-agent"
+      - "beszel-socket:/beszel_socket"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    environment:
+      LISTEN: "/beszel_socket/beszel.sock"
+      HUB_URL: "http://127.0.0.1:${PORT:-8090}"
+      TOKEN: "${AGENT_TOKEN:-}"
+      KEY: "${AGENT_KEY:-}"

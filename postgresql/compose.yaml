@@ -1,0 +1,36 @@
+x-psql: &psql_base
+  environment:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: "${PASSWORD}"
+    POSTGRES_DB: postgres
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  pgdata:
+  pgvdata:
+
+services:
+  psql:
+    image: "postgres:${VERSION}"
+    <<: *psql_base
+    networks:
+      default:
+        aliases:
+          - "${PSQL_ALIAS}"
+    volumes:
+      - "pgdata:${PSQL_DATA_DIR:-/var/lib/postgresql/data}"
+
+  pgv:
+    image: "pgvector/pgvector:${PGV_VERSION}"
+    <<: *psql_base
+    networks:
+      default:
+        aliases:
+          - "${PGV_ALIAS}"
+    volumes:
+      - "pgvdata:${PGV_DATA_DIR:-/var/lib/postgresql/data}"
+

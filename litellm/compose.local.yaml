@@ -1,0 +1,6 @@
+services:
+  litellm:
+    # For clients running on the host rather than on NETWORK (e.g. a locally
+    # run simple-coding-agent): http://127.0.0.1:<HOST_PORT>.
+    ports:
+      - "127.0.0.1:${HOST_PORT:-4000}:4000"

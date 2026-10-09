@@ -1,0 +1,31 @@
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  mysql-data:
+
+services:
+  mysql:
+    image: "mysql:${VERSION}"
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+    volumes:
+      - "mysql-data:/var/lib/mysql"
+    ports:
+      - "${HOST_IP}:${HOST_PORT:-3306}:3306/tcp"
+    networks:
+      default:
+        aliases:
+          - "${HOSTNAME_DB}"
+    # command: ["--sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION"]
+
+  phpmyadmin:
+    image: phpmyadmin
+    environment:
+      VIRTUAL_HOST: "${HOSTNAME_PMA}"
+      LETSENCRYPT_HOST: "${HOSTNAME_PMA}"
+      PMA_ARBITRARY: 1
+

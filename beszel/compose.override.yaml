@@ -1,0 +1,4 @@
+services:
+  beszel:
+    ports:
+      - "${LAN_HOST_IP}:${PORT:-8090}:8090"

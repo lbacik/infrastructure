@@ -1,0 +1,7 @@
+services:
+  psql:
+    ports:
+      - "${HOST}:${PORT}:5432/tcp"
+  pgv:
+    ports:
+      - "${HOST}:${PGV_PORT}:5432/tcp"

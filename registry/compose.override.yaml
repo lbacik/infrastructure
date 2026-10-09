@@ -1,0 +1,7 @@
+services:
+  registry:
+    networks:
+      default:
+        ipv4_address: "${REGISTRY_IP}"
+        aliases:
+          - "${REGISTRY_ALIAS}"

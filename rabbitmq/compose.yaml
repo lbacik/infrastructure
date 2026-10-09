@@ -1,0 +1,40 @@
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+volumes:
+  rabbitmq-data:
+
+services:
+  rabbitmq:
+    image: "rabbitmq:${TAG:-management}"
+    # Pinned: the node's data lives in mnesia/rabbit@$HOSTNAME, and the default
+    # hostname is the container id - it would change on every recreate and
+    # orphan the volume's contents.
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBIT_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBIT_PASS}"
+      VIRTUAL_HOST: "${HOST_NAME}"
+      VIRTUAL_PORT: "${MGMT_PORT}"
+      LETSENCRYPT_HOST: "${HOST_NAME}"
+    volumes:
+      - "rabbitmq-data:/var/lib/rabbitmq"
+    healthcheck:
+      # Deeper than a plain ping: confirms the node actually accepts
+      # connections on 5672 (clients) and 15672 (nginx-proxy).
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # ports:
+    #   - "${HOST_IP}:${MGMT_PORT}:${MGMT_PORT}"
+    #   - "${HOST_IP}:5672:5672"
+    networks:
+      default:
+        aliases:
+          - "${HOST_ALIAS}"
+

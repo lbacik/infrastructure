@@ -1,0 +1,34 @@
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  litellm:
+    build:
+      context: ./images/litellm
+      args:
+        - LITELLM_VERSION=${LITELLM_VERSION:?LITELLM_VERSION is required}
+    restart: "${RESTART:-unless-stopped}"
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      # Clients (e.g. simple-coding-agent) authenticate with this key as a
+      # bearer token; provider keys below never leave this container.
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required}"
+      META_API_KEY: "${META_API_KEY:?META_API_KEY is required}"
+      # Upstream default is DEBUG, which is far too verbose for a proxy that
+      # carries full prompts.
+      LITELLM_LOG: "${LITELLM_LOG:-INFO}"
+    networks:
+      default:
+        aliases:
+          - "${ALIAS:-litellm}"
+    # Not published: reachable only on NETWORK as http://<ALIAS>:4000.
+    # compose.local.yaml adds a loopback port for host-run clients.
+    healthcheck:
+      # The image ships python but no curl/wget.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

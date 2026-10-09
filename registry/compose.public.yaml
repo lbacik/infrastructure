@@ -1,0 +1,80 @@
+# Layered on top of compose.yaml for hosts that publish the registry to the
+# internet through the proxy-ssl project (currently: rum, where it replaces
+# ghcr.io as the image registry for GitHub Actions builds of private repos):
+#
+#   docker compose \
+#     --project-directory monorepo/registry \
+#     -f monorepo/registry/compose.yaml \
+#     -f monorepo/registry/compose.public.yaml \
+#     --env-file configurations/rum/registry.env \
+#     -p registry up -d
+#
+# It adds the two things the base file deliberately leaves out: htpasswd
+# authentication, and the nginx-proxy tuning without which `docker push` dies
+# on the first layer.
+
+volumes:
+  registry-auth:
+
+  # nginx-proxy's per-vhost config directory, owned by the proxy-ssl project.
+  proxy-vhost:
+    name: "${PROXY_VHOST_VOLUME:-proxy_nginx-vhost}"
+    external: true
+
+services:
+  # One-shot. registry:2 reads its credentials only from an htpasswd file, and
+  # a bind mount would resolve against the workstation rather than the remote
+  # daemon - so the file is generated into a named volume from the env file
+  # instead. bcrypt (-B) is the only hash the registry accepts.
+  auth:
+    image: httpd:2-alpine
+    restart: "no"
+    network_mode: none
+    environment:
+      - REGISTRY_USER=${REGISTRY_USER:?REGISTRY_USER is required}
+      - REGISTRY_PASSWORD=${REGISTRY_PASSWORD:?REGISTRY_PASSWORD is required}
+    volumes:
+      - "registry-auth:/auth"
+    command:
+      - sh
+      - -c
+      - 'htpasswd -Bbc /auth/htpasswd "$$REGISTRY_USER" "$$REGISTRY_PASSWORD"'
+
+  # One-shot. nginx-proxy emits no client_max_body_size, so the vhost inherits
+  # nginx's 1m default and every layer push fails with 413. A server-level
+  # snippet named after the vhost is the supported way to patch that. It has to
+  # be in place before the registry container makes docker-gen regenerate the
+  # config, hence the depends_on below.
+  proxy-config:
+    image: busybox:latest
+    restart: "no"
+    network_mode: none
+    volumes:
+      - "proxy-vhost:/etc/nginx/vhost.d"
+    command:
+      - sh
+      - -c
+      - 'printf "client_max_body_size 0;\nproxy_read_timeout 900;\n" > "/etc/nginx/vhost.d/${REGISTRY_DOMAIN:?REGISTRY_DOMAIN is required}"'
+
+  registry:
+    depends_on:
+      auth:
+        condition: service_completed_successfully
+      proxy-config:
+        condition: service_completed_successfully
+    volumes:
+      - "registry-auth:/auth:ro"
+    environment:
+      - REGISTRY_AUTH=htpasswd
+      - REGISTRY_AUTH_HTPASSWD_REALM=Registry
+      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+      # the proxy terminates TLS; without an explicit external address the
+      # registry hands out http:// upload locations and pushes break
+      - REGISTRY_HTTP_HOST=https://${REGISTRY_DOMAIN}
+      # signs the upload-state tokens handed back mid-push. Left unset the
+      # registry invents one per start, so a restart during a CI push fails it.
+      - REGISTRY_HTTP_SECRET=${REGISTRY_HTTP_SECRET:?REGISTRY_HTTP_SECRET is required}
+
+  registry-ui:
+    environment:
+      - REGISTRY_SECURED=true

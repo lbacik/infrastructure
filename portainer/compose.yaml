@@ -1,0 +1,24 @@
+# version: "3.9"
+
+volumes:
+  portainer-data:
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  portainer:
+    image: portainer/portainer-ce
+    volumes:
+      - "portainer-data:/data"
+      - "${DOCKER_SOCKET}:/var/run/docker.sock"
+    ports:
+      - "${HOST_IP}:${PORT}:9000/tcp"
+    environment:
+      VIRTUAL_HOST: "portainer.${SUBDOMAIN}.${DOMAIN}"
+      VIRTUAL_PORT: 9000
+      LETSENCRYPT_HOST: "portainer.${SUBDOMAIN}.${DOMAIN}"
+
+
