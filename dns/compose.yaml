@@ -1,0 +1,30 @@
+# version: '3.9'
+
+networks:
+  default:
+    name: "${NETWORK}"
+    external: true
+
+services:
+  ns:
+    container_name: dns-ns-1
+    build:
+      context: ./images/dnsmasq
+      args:
+        - DNSMASQ_CONF=${DNSMASQ_CONF}
+    environment:
+      DOMAIN: "${DOMAIN}"
+      HOST_IP: "${HOST_IP}"
+      ZONES: "${ZONES}"
+      SOA_SERIAL: "${SOA_SERIAL}"
+    networks:
+      default:
+        aliases:
+          - "ns.${DOMAIN}"
+          #    ipv4_address: "${IP}"
+    ports:
+      - "${HOST_IP}:53:53/udp"
+      - "${HOST_IP}:53:53/tcp"
+    cap_add:
+      - NET_ADMIN
+
